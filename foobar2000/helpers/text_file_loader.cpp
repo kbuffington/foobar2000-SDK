@@ -59,6 +59,7 @@ namespace text_file_loader
 				return;
 			}
 			if (!memcmp(utf8_header, temp, 3)) is_utf8 = true;
+            else if (is_utf8) p_out.add_string(temp,3);
 			else ansitemp.add_string(temp, 3);
 
 			mem.set_size(delta);
@@ -89,7 +90,7 @@ namespace text_file_loader
 			char * asdf = mem.get_ptr();
 			p_file->read_object(asdf,size,p_abort);
 			asdf[size]=0;
-			if (size>3 && !memcmp(utf8_header,asdf,3)) {
+			if (size>=3 && !memcmp(utf8_header,asdf,3)) {
 				is_utf8 = true; 
 				p_out.add_string(asdf+3); 
 			} else if (forceUTF8) {

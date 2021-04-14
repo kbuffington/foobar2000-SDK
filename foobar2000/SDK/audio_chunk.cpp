@@ -101,7 +101,7 @@ template<bool byteSwap, bool isSigned> static void _import32any(const void * in,
 	for(size_t walk = 0; walk < count; ++walk) {
 		uint32_t v = *inPtr++;
 		if (byteSwap) v = pfc::byteswap_t(v);
-		if (!isSigned) v ^= 0x80000000; // to signed
+		if (!isSigned) v ^= 0x80000000u; // to signed
 		*out++ = (audio_sample) (int32_t) v * factor;
 	}
 }
@@ -325,8 +325,14 @@ void audio_chunk::set_data_floatingpoint_ex(const void * ptr,t_size size,unsigne
 	set_channels(nch,p_channel_config);
 }
 
+pfc::string8 audio_chunk::formatChunkSpec() const {
+	pfc::string8 msg;
+	msg << get_sample_rate() << " Hz, " << get_channels() << ":0x" << pfc::format_hex(get_channel_config(), 2) << " channels, " << get_sample_count() << " samples";
+	return msg;
+}
+
 void audio_chunk::debugChunkSpec() const {
-	FB2K_DebugLog() << "Chunk: " << get_sample_rate() << " Hz, " << get_channels() << ":0x" << pfc::format_hex(get_channel_config(),2) << " channels, " << get_sample_count() << " samples";
+	FB2K_DebugLog() << "Chunk: " << this->formatChunkSpec();
 }
 
 #if PFC_DEBUG
@@ -341,7 +347,7 @@ void audio_chunk::assert_valid(const char * ctx) const {
 bool audio_chunk::is_valid() const
 {
 	unsigned nch = get_channels();
-	if (nch==0 || nch>256) return false;
+	if (nch == 0 || nch > 32) return false;
 	if (!g_is_valid_sample_rate(get_srate())) return false;
 	t_size samples = get_sample_count();
 	if (samples==0 || samples >= 0x80000000ul / (sizeof(audio_sample) * nch) ) return false;
@@ -590,13 +596,19 @@ bool audio_chunk::spec_t::equals( const spec_t & v1, const spec_t & v2 ) {
 	return v1.sampleRate == v2.sampleRate && v1.chanCount == v2.chanCount && v1.chanMask == v2.chanMask;
 }
 
-pfc::string8 audio_chunk::spec_t::toString() const {
+pfc::string8 audio_chunk::spec_t::toString(const char * delim) const {
 	pfc::string_formatter temp;
-	temp << sampleRate << "Hz " << chanCount << "ch";
+	if ( sampleRate > 0 ) temp << sampleRate << "Hz";
+	if (chanCount > 0) {
+		if ( temp.length() > 0 ) temp << delim;
+		temp << chanCount << "ch";
+	}
+
 	if ( chanMask != audio_chunk::channel_config_mono && chanMask != audio_chunk::channel_config_stereo ) {
 		pfc::string8 strMask;
 		audio_chunk::g_formatChannelMaskDesc( chanMask, strMask );
-		temp << " " << strMask;
+		if ( temp.length() > 0) temp << delim;
+		temp << strMask;
 	}		
 	return temp;
 }
@@ -677,3 +689,14 @@ WAVEFORMATEXTENSIBLE audio_chunk::spec_t::toWFXEXWithBPS(uint32_t bps) const {
 	return wfxe;
 }
 #endif // _WIN32
+
+void audio_chunk::append(const audio_chunk& other) {
+	if (other.get_spec() != this->get_spec()) {
+		throw pfc::exception_invalid_params();
+	}
+
+	this->grow_data_size(get_used_size() + other.get_used_size());
+	audio_sample* p = this->get_data() + get_used_size();
+	memcpy(p, other.get_data(), other.get_used_size() * sizeof(audio_sample));
+	set_sample_count(get_sample_count() + other.get_sample_count());
+}

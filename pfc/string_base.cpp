@@ -1029,7 +1029,7 @@ int stringCompareCaseInsensitive(const char * s1, const char * s2) {
 	}
 }
 
-format_file_size_short::format_file_size_short(t_uint64 size) {
+void format_file_size_short::format(t_uint64 size) {
 	t_uint64 scale = 1;
 	const char * unit = "B";
 	const char * const unitTable[] = {"B","KB","MB","GB","TB"};
@@ -1352,4 +1352,16 @@ void string_base::fix_dir_separator(char c) {
 		}
 		return ret;
 	}
+
+	string8 stringToUpper(const char * str, size_t len) {
+		string8 ret;
+		stringToUpperAppend(ret, str, len);
+		return ret;
+	}
+	string8 stringToLower(const char * str, size_t len) {
+		string8 ret;
+		stringToLowerAppend(ret, str, len);
+		return ret;
+	}
+
 } //namespace pfc

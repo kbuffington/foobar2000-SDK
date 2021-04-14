@@ -5,6 +5,8 @@
 PFC_DECLARE_EXCEPTION(exception_output_device_not_found, pfc::exception, "Audio device not found")
 PFC_DECLARE_EXCEPTION(exception_output_module_not_found, exception_output_device_not_found, "Output module not found")
 PFC_DECLARE_EXCEPTION(exception_output_invalidated, pfc::exception, "Audio device invalidated")
+PFC_DECLARE_EXCEPTION(exception_output_device_in_use, pfc::exception, "Audio device in use")
+PFC_DECLARE_EXCEPTION(exception_output_unsupported_stream_format, pfc::exception, "Unsupported audio stream format")
 
 
 // =======================================================
@@ -120,6 +122,9 @@ public:
     //! Helper, see output_v4::get_event_trigger()
     pfc::eventHandle_t get_trigger_event_();
 
+    //! Helper for output_entry implementation.
+    static uint32_t g_extra_flags() { return 0; }
+
 };
 
 class NOVTABLE output_v2 : public output {
@@ -168,6 +173,12 @@ public:
     virtual size_t update_v2();
 };
 
+//! \since 1.6
+class output_v5 : public output_v4 {
+	FB2K_MAKE_SERVICE_INTERFACE(output_v5, output_v4);
+public:
+	virtual unsigned get_forced_channel_mask() { return 0; }
+};
 
 class NOVTABLE output_entry : public service_base {
 	FB2K_MAKE_SERVICE_INTERFACE_ENTRYPOINT(output_entry);
@@ -198,6 +209,8 @@ public:
 		flag_high_latency = 1 << 5,
 		//! Low latency operation (local playback), mutually exclusive with flag_high_latency
 		flag_low_latency = 1 << 6,
+        //! When set, the output will be used in special compatibility mode: guaranteed regular update() calls, injected padding (silence) at the end of stream.
+        flag_needs_shims = 1 << 7,
 	};
 
 	virtual t_uint32 get_config_flags() = 0;
@@ -236,6 +249,7 @@ public:
 		if (T::g_supports_multiple_streams()) flags |= output_entry::flag_supports_multiple_streams;
 		if (T::g_is_high_latency()) flags |= output_entry::flag_high_latency;
 		else flags |= output_entry::flag_low_latency;
+        flags |= T::g_extra_flags();
 		return flags;
 	}
 };
@@ -245,7 +259,7 @@ public:
 template<class T>
 class output_factory_t : public service_factory_single_t<output_entry_impl_t<T> > {};
 
-class output_impl : public output_v4 {
+class output_impl : public output_v5 {
 protected:
 	output_impl() : m_incoming_ptr(0) {}
 	virtual void on_update() = 0;

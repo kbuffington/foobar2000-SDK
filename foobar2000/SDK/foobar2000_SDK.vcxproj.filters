@@ -269,9 +269,6 @@
     <ClInclude Include="service_by_guid.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="service_compat.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="foobar2000-pfc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -288,6 +285,24 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ui_element_typable_window_manager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="service_compat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tracks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="file_info_filter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="file_info_filter_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="imageLoaderLite.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="imageViewer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -15,6 +15,7 @@ public:
 #endif
 	}
 	inline void destroy() throw() {DeleteCriticalSection(&sec);}
+	inline bool tryEnter() throw() { return !!TryEnterCriticalSection(&sec); }
 private:
 	_critical_section_base(const _critical_section_base&);
 	void operator=(const _critical_section_base&);
@@ -31,24 +32,28 @@ public:
 
 // Regular critical section, intended for any lifetime scopes
 class critical_section : public _critical_section_base {
-private:
-	CRITICAL_SECTION sec;
 public:
 	critical_section() {create();}
 	~critical_section() {destroy();}
 };
 
-class c_insync
+template<typename lock_t>
+class c_insync_
 {
 private:
-	_critical_section_base & m_section;
+	lock_t& m_section;
 public:
-	c_insync(_critical_section_base * p_section) throw() : m_section(*p_section) {m_section.enter();}
-	c_insync(_critical_section_base & p_section) throw() : m_section(p_section) {m_section.enter();}
-	~c_insync() throw() {m_section.leave();}
+	c_insync_(lock_t * p_section) throw() : m_section(*p_section) {m_section.enter();}
+	c_insync_(lock_t & p_section) throw() : m_section(p_section) {m_section.enter();}
+	~c_insync_() throw() {m_section.leave();}
 };
 
+typedef c_insync_<_critical_section_base> c_insync;
+
+// Old typedef for backwards compat
 #define insync(X) c_insync blah____sync(X)
+// New typedef
+#define PFC_INSYNC(X) c_insync_<decltype(X)> blah____sync(X)
 
 
 namespace pfc {
@@ -56,32 +61,6 @@ namespace pfc {
 
 // Read write lock - Vista-and-newer friendly lock that allows concurrent reads from a resource that permits such
 // Warning, non-recursion proof
-#if _WIN32_WINNT < 0x600
-
-// Inefficient fallback implementation for pre Vista OSes
-class readWriteLock {
-public:
-	readWriteLock() {}
-	void enterRead() {
-		m_obj.enter();
-	}
-	void enterWrite() {
-		m_obj.enter();
-	}
-	void leaveRead() {
-		m_obj.leave();
-	}
-	void leaveWrite() {
-		m_obj.leave();
-	}
-private:
-	critical_section m_obj;
-
-	readWriteLock( const readWriteLock & ) = delete;
-	void operator=( const readWriteLock & ) = delete;
-};
-
-#else
 class readWriteLock {
 public:
 	readWriteLock() : theLock() {
@@ -106,7 +85,6 @@ private:
 
 	SRWLOCK theLock;
 };
-#endif
 
 class _readWriteLock_scope_read {
 public:

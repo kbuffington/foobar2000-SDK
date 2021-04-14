@@ -3876,6 +3876,12 @@ public:
 		return (int)::SendMessage(this->m_hWnd, LVM_MAPIDTOINDEX, uID, 0L);
 	}
 
+	BOOL IsItemVisible(int nItem) const
+	{
+		ATLASSERT(::IsWindow(this->m_hWnd));
+		return (BOOL)::SendMessage(this->m_hWnd, LVM_ISITEMVISIBLE, nItem, 0L);
+	}
+
 #if (_WIN32_WINNT >= 0x0600)
 	int HitTestEx(LPLVHITTESTINFO lpHitTestInfo) const
 	{
@@ -3902,19 +3908,27 @@ public:
 #endif // (_WIN32_WINNT >= 0x0600)
 
 	// Note: selects only one item
-	BOOL SelectItem(int nIndex)
+	BOOL SelectItem(int nIndex)   // -1 to select none
 	{
 		ATLASSERT(::IsWindow(this->m_hWnd));
 
-		// multi-selection only: de-select all items
-		if((this->GetStyle() & LVS_SINGLESEL) == 0)
-			SetItemState(-1, 0, LVIS_SELECTED);
-
-		BOOL bRet = SetItemState(nIndex, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-		if(bRet)
+		BOOL bRet = FALSE;
+		if(nIndex != -1)
 		{
-			SetSelectionMark(nIndex);
-			bRet = EnsureVisible(nIndex, FALSE);
+			// multi-selection only: de-select all items
+			if((this->GetStyle() & LVS_SINGLESEL) == 0)
+				SetItemState(-1, 0, LVIS_SELECTED);
+
+			bRet = SetItemState(nIndex, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+			if(bRet)
+			{
+				SetSelectionMark(nIndex);
+				bRet = EnsureVisible(nIndex, FALSE);
+			}
+		}
+		else   // no item specified, just de-select
+		{
+			bRet = SetItemState(-1, 0, LVIS_SELECTED);
 		}
 
 		return bRet;
@@ -4473,10 +4487,10 @@ public:
 		return (HTREEITEM)::SendMessage(this->m_hWnd, TVM_GETNEXTITEM, TVGN_LASTVISIBLE, 0L);
 	}
 
-	HTREEITEM GetNextSelectedItem() const
+	HTREEITEM GetNextSelectedItem(HTREEITEM hItem) const
 	{
 		ATLASSERT(::IsWindow(this->m_hWnd));
-		return (HTREEITEM)::SendMessage(this->m_hWnd, TVM_GETNEXTITEM, TVGN_NEXTSELECTED, 0L);
+		return (HTREEITEM)::SendMessage(this->m_hWnd, TVM_GETNEXTITEM, TVGN_NEXTSELECTED, (LPARAM)hItem);
 	}
 
 	BOOL Select(HTREEITEM hItem, UINT nCode)
@@ -4824,10 +4838,10 @@ public:
 		return CTreeItemT<TBase>(hTreeItem, (CTreeViewCtrlExT<TBase>*)this);
 	}
 
-	CTreeItemT<TBase> GetNextSelectedItem() const
+	CTreeItemT<TBase> GetNextSelectedItem(HTREEITEM hItem) const
 	{
 		ATLASSERT(::IsWindow(this->m_hWnd));
-		HTREEITEM hTreeItem = (HTREEITEM)::SendMessage(this->m_hWnd, TVM_GETNEXTITEM, TVGN_NEXTSELECTED, 0L);
+		HTREEITEM hTreeItem = (HTREEITEM)::SendMessage(this->m_hWnd, TVM_GETNEXTITEM, TVGN_NEXTSELECTED, (LPARAM)hItem);
 		return CTreeItemT<TBase>(hTreeItem, (CTreeViewCtrlExT<TBase>*)this);
 	}
 
@@ -4975,7 +4989,7 @@ template <class TBase>
 inline CTreeItemT<TBase> CTreeItemT<TBase>::GetNextSelected() const
 {
 	ATLASSERT(m_pTreeView != NULL);
-	return m_pTreeView->GetNextSelectedItem();
+	return m_pTreeView->GetNextSelectedItem(m_hTreeItem);
 }
 
 template <class TBase>
