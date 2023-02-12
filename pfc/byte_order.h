@@ -86,9 +86,8 @@ namespace pfc {
 
 #ifdef _MSC_VER
 
-#if defined(_M_IX86) || defined(_M_X64) || defined(_M_ARM)
+// No MSVC platform is ever big endian
 #define PFC_BYTE_ORDER_IS_BIG_ENDIAN 0
-#endif
 
 #else//_MSC_VER
 
@@ -114,8 +113,8 @@ namespace pfc {
 
 
 namespace pfc {
-	static const bool byte_order_is_big_endian = !!PFC_BYTE_ORDER_IS_BIG_ENDIAN;
-	static const bool byte_order_is_little_endian = !!PFC_BYTE_ORDER_IS_LITTLE_ENDIAN;
+	static constexpr bool byte_order_is_big_endian = !!PFC_BYTE_ORDER_IS_BIG_ENDIAN;
+	static constexpr bool byte_order_is_little_endian = !!PFC_BYTE_ORDER_IS_LITTLE_ENDIAN;
 
 	template<typename T> T byteswap_if_be_t(T p_param) {return byte_order_is_big_endian ? byteswap_t(p_param) : p_param;}
 	template<typename T> T byteswap_if_le_t(T p_param) {return byte_order_is_little_endian ? byteswap_t(p_param) : p_param;}

@@ -2,18 +2,12 @@
 // Microsoft Visual C++ generated include file.
 // Used by foo_sample.rc
 //
-
-#ifndef IDC_STATIC
-#define IDC_STATIC -1
-#endif
-
 #define IDD_PLAYBACK_STATE              101
 #define IDD_DSP                         102
 #define IDD_UI_ELEMENT                  103
 #define IDD_THREADS                     105
 #define IDD_LISTCONTROL_DEMO            107
 #define IDI_ICON1                       109
-#define IDI_SCROLL                      109
 #define IDD_MYPREFERENCES               148
 #define IDC_BOGO1                       1001
 #define IDC_BOGO2                       1002

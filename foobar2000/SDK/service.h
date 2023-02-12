@@ -212,10 +212,7 @@ public:
 	template<typename source_t>
 	void forcedCastFrom(source_t const & other) {
 		if (!other->cast(*this)) {
-#if PFC_DEBUG
-			FB2K_DebugLog() << "Forced cast failure: " << pfc::print_guid(T::class_guid);
-#endif
-			uBugCheck();
+			FB2K_BugCheckEx("forced cast failure");
 		}
 	}
 };
@@ -406,11 +403,11 @@ public:
 	//! Decrements reference count; deletes the object if reference count reaches zero. This is normally not called directly but managed by service_ptr_t<> template. \n
 	//! Implemented by service_impl_* classes.
 	//! @returns New reference count. For debug purposes only, in certain conditions return values may be unreliable.
-	virtual int service_release() throw() = 0;
+	virtual int service_release() noexcept = 0;
 	//! Increments reference count. This is normally not called directly but managed by service_ptr_t<> template. \n
 	//! Implemented by service_impl_* classes.
 	//! @returns New reference count. For debug purposes only, in certain conditions return values may be unreliable.
-	virtual int service_add_ref() throw() = 0;
+	virtual int service_add_ref() noexcept = 0;
 	//! Queries whether the object supports specific interface and retrieves a pointer to that interface. This is normally not called directly but managed by service_query_t<> function template. \n
 	//! Checks the parameter against GUIDs of interfaces supported by this object, if the GUID is one of supported interfaces, p_out is set to service_base pointer that can be static_cast<>'ed to queried interface and the method returns true; otherwise the method returns false. \n
 	//! Implemented by service_impl_* classes. \n
@@ -436,10 +433,6 @@ public:
 	static const char * debugServiceName() {return "service_base"; }
 
 	static bool serviceRequiresMainThreadDestructor() { return false; }
-
-#ifdef FOOBAR2000_MODERN
-    static bool shouldRegisterService() { return true; }
-#endif
 
 	service_base * as_service_base() { return this; }
 protected:
@@ -491,9 +484,6 @@ public:
 
 	//! Throws std::bad_alloc or another exception on failure.
 	virtual void instance_create(service_ptr_t<service_base> & p_out) = 0;
-#ifdef FOOBAR2000_MODERN
-    virtual bool should_register() { return true; }
-#endif
 
 	//! FOR INTERNAL USE ONLY
 	static service_factory_base *__internal__list;
@@ -514,6 +504,16 @@ class service_factory_base_t : public service_factory_base {
 public:
 	service_factory_base_t() : service_factory_base(B::class_guid, service_factory_traits<B>::factory_list()) {
 		pfc::assert_same_type<B,typename B::t_interface_entrypoint>();
+	}
+protected:
+	template<typename in_t>
+	static void pass_instance(service_ptr& out, in_t* in) {
+		// in_t could be multi inherited, fix multi inheritance issues here
+		// caller will static cast the returned service_base* to B* later on
+		// make sure that what we hand over supports such
+		service_ptr_t< B > temp;
+		temp ^= in->as_service_base();
+		out.attach(temp.detach());
 	}
 };
 
@@ -658,6 +658,7 @@ private:
 
 template<typename t_interface>
 class service_enum_t {
+	typedef service_enum_t<t_interface> self_t;
 public:
 	service_enum_t() : m_index(0) {
 		pfc::assert_same_type<t_interface,typename t_interface::t_interface_entrypoint>();
@@ -705,17 +706,31 @@ public:
 	service_ptr_t<t_interface> operator*() const {
 		return get();
 	}
+
+	// ==== modern for loop support ====
+	// Instead of using service_enum_t<> / service_ptr_t<>, use:
+	// for( auto ptr : someclass::enumerate() ) { ... }
+	self_t begin() const {
+		self_t ret = *this;
+		ret.m_index = 0;
+		return ret;
+	}
+	self_t end() const {
+		self_t ret = *this;
+		ret.m_index = ret.m_helper.get_count();
+		return ret;
+	}
+	bool operator==(self_t const& other) const {return m_index == other.m_index;}
+	bool operator!=(self_t const& other) const { return m_index != other.m_index; }
+
+
 private:
 	bool _next(service_ptr_t<t_interface> & p_out) {
 		return m_helper.create(p_out,m_index++);
 	}
-	unsigned m_index;
+	size_t m_index;
 	service_class_helper_t<t_interface> m_helper;
 };
-
-//! New fb2k service enumeration syntax
-//! for(auto e = FB2K_ENUMERATE(someclass); !e.finished(); ++e) { auto srv = *e; srv->do_stuff(); }
-#define FB2K_ENUMERATE(what_t) service_enum_t<what_t>()
 
 namespace fb2k {
 	//! Modern get-std-api helper. \n
@@ -734,7 +749,7 @@ namespace fb2k {
 	}
 
 	//! Modern get-std-api helper. \n
-	//! Returns true on scucess (ret ptr is valid), false on failure (API not found).
+	//! Returns true on success (ret ptr is valid), false on failure (API not found).
 	template<typename api_t>
 	bool std_api_try_get( service_ptr_t<api_t> & ret ) {
 		typedef typename api_t::t_interface_entrypoint entrypoint_t;
@@ -754,11 +769,8 @@ template<typename T>
 class service_factory_t : public service_factory_base_t<typename T::t_interface_entrypoint> {
 public:
 	void instance_create(service_ptr_t<service_base> & p_out) override {
-        p_out = pfc::implicit_cast<service_base*>(pfc::implicit_cast<typename T::t_interface_entrypoint*>(pfc::implicit_cast<T*>(  new service_impl_t<T>  )));
+		this->pass_instance(p_out, new service_impl_t<T>);
 	}
-#ifdef FOOBAR2000_MODERN
-    bool should_register() override { return T::shouldRegisterService(); }
-#endif
 };
 
 
@@ -769,11 +781,8 @@ public:
 	template<typename ... arg_t> service_factory_single_t(arg_t && ... arg) : g_instance(std::forward<arg_t>(arg) ...) {}
 
 	void instance_create(service_ptr_t<service_base> & p_out) override {
-		p_out = pfc::implicit_cast<service_base*>(pfc::implicit_cast<typename T::t_interface_entrypoint*>(pfc::implicit_cast<T*>(&g_instance)));
+		this->pass_instance(p_out, &g_instance);
 	}
-#ifdef FOOBAR2000_MODERN
-    bool should_register() override { return g_instance.shouldRegisterService(); }
-#endif
 
 	inline T& get_static_instance() { return g_instance; }
 	inline const T& get_static_instance() const { return g_instance; }
@@ -789,11 +798,8 @@ public:
 		return g_instance;
 	}
 	void instance_create(service_ptr_t<service_base> & p_out) override {
-		p_out = pfc::implicit_cast<service_base*>(pfc::implicit_cast<typename T::t_interface_entrypoint*>(get()));
+		this->pass_instance(p_out, get());
 	}
-#ifdef FOOBAR2000_MODERN
-	bool should_register() override { return T::shouldRegisterService(); }
-#endif
 };
 
 template<typename T>
@@ -805,11 +811,8 @@ public:
 	service_factory_single_ref_t(T& param) : instance(param) {}
 
 	void instance_create(service_ptr_t<service_base> & p_out) override {
-		p_out = pfc::implicit_cast<service_base*>(pfc::implicit_cast<typename T::t_interface_entrypoint*>(pfc::implicit_cast<T*>(&instance)));
+		this->pass_instance(p_out, &instance);
 	}
-#ifdef FOOBAR2000_MODERN
-	bool should_register() override { return instance.shouldRegisterService(); }
-#endif
 
 	inline T& get_static_instance() { return instance; }
 };
@@ -821,11 +824,8 @@ public:
     template<typename ... arg_t> service_factory_single_transparent_t(arg_t && ... arg) : service_impl_single_t<T>( std::forward<arg_t>(arg) ...) {}
 
 	void instance_create(service_ptr_t<service_base> & p_out) override {
-		p_out = pfc::implicit_cast<service_base*>(pfc::implicit_cast<typename T::t_interface_entrypoint*>(pfc::implicit_cast<T*>(this)));
+		this->pass_instance(p_out, pfc::implicit_cast<T*>(this));
 	}
-#ifdef FOOBAR2000_MODERN
-    bool should_register() override { return this->shouldRegisterService(); }
-#endif
 
     inline T& get_static_instance() {return *(T*)this;}
     inline const T& get_static_instance() const {return *(const T*)this;}
@@ -838,8 +838,15 @@ public:
 #define FB2K_SERVICE_FACTORY_ATTR __attribute__ (( __used__ ))
 #endif
 
-#define FB2K_SERVICE_FACTORY( TYPE ) static ::service_factory_single_t< TYPE > g_##TYPE##factory FB2K_SERVICE_FACTORY_ATTR;
-#define FB2K_SERVICE_FACTORY_DYNAMIC( TYPE ) static ::service_factory_t< TYPE > g_##TYPE##factory FB2K_SERVICE_FACTORY_ATTR;
+#define _FB2K_CONCAT(a, b) _FB2K_CONCAT_INNER(a, b)
+#define _FB2K_CONCAT_INNER(a, b) a ## b
+
+#define _FB2K_UNIQUE_NAME(base) _FB2K_CONCAT(base, __COUNTER__)
+
+#define FB2K_SERVICE_FACTORY( TYPE ) static ::service_factory_single_t< TYPE > _FB2K_UNIQUE_NAME(g_factory_) FB2K_SERVICE_FACTORY_ATTR;
+#define FB2K_SERVICE_FACTORY_LATEINIT( TYPE ) static ::service_factory_single_v2_t< TYPE > _FB2K_UNIQUE_NAME(g_factory_) FB2K_SERVICE_FACTORY_ATTR;
+#define FB2K_SERVICE_FACTORY_PARAMS( TYPE, ... ) static ::service_factory_single_t< TYPE > _FB2K_UNIQUE_NAME(g_factory_) ( __VA_ARGS__ );
+#define FB2K_SERVICE_FACTORY_DYNAMIC( TYPE ) static ::service_factory_t< TYPE > _FB2K_UNIQUE_NAME(g_factory_) FB2K_SERVICE_FACTORY_ATTR;
 
 
-#define FB2K_FOR_EACH_SERVICE(type, call) {service_enum_t<typename type::t_interface_entrypoint> e; service_ptr_t<type> ptr; while(e.next(ptr)) {ptr->call;} }
+#define FB2K_FOR_EACH_SERVICE(type, call) for( auto obj : type::enumerate() ) { obj->call; }

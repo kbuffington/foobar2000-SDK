@@ -1,5 +1,7 @@
-#include "foobar2000.h"
+#include "foobar2000-sdk-pch.h"
 #include "foosort.h"
+#include "threadPool.h"
+#include "genrand.h"
 
 #define FOOSORT_PROFILING 0
 
@@ -19,7 +21,8 @@ namespace {
 		}
 
 		size_t myrand(size_t cnt) {
-			return genrand->genrand(cnt);
+			PFC_ASSERT(cnt == (uint32_t)cnt);
+			return genrand->genrand((uint32_t)cnt);
 		}
 
 		void squaresort(t_size const p_base, t_size const p_count) {
@@ -114,17 +117,19 @@ namespace {
 				FB2K_console_formatter() << "foosort pass: " << p_base << "+" << p_count << "(" << concurrency << ") took " << t.queryString();
 				FB2K_console_formatter() << "foosort forking: " << base1 << "+" << count1 << "(" << con1 << ") + " << base2 << "+" << count2 << "(" << con2 << ")";
 #endif
-				pfc::thread2 other;
-				other.startHere([&] {
+				pfc::counter cnt;
+				fb2k::cpuThreadPool::runMultiHelper([&] {
 					try {
-						foosort subsort = fork();
-						subsort.newsort(base1, count1, con1);
+						switch (cnt++) {
+						case 0:
+							{ foosort subsort = fork(); subsort.newsort(base1, count1, con1); }
+							break;
+						case 1:
+							newsort(base2, count2, con2);
+							break;
+						}
 					} catch (exception_aborted) {}
-				});
-				try {
-					newsort(base2, count2, con2);
-				} catch (exception_aborted) {}
-				other.waitTillDone();
+				}, 2);
 				m_abort.check();
 			} else {
 				newsort(base1, count1, 1);
@@ -142,6 +147,9 @@ namespace {
 }
 namespace fb2k {
 	void sort(pfc::sort_callback & cb, size_t count, size_t concurrency, abort_callback & aborter) {
+#ifdef FOOSORT_LIMIT_THREADS
+		if (concurrency > FOOSORT_LIMIT_THREADS) concurrency = FOOSORT_LIMIT_THREADS;
+#endif
 #if FOOSORT_PROFILING
 		foosort_timer t; t.start();
 #endif

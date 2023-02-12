@@ -7,7 +7,7 @@
 //
 // Generated from the TEXTINCLUDE 2 resource.
 //
-#include "windows.h"
+#include "winres.h"
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
@@ -32,7 +32,7 @@ END
 
 2 TEXTINCLUDE 
 BEGIN
-    "#include ""windows.h""\r\n"
+    "#include ""winres.h""\r\n"
     "\0"
 END
 
@@ -199,16 +199,6 @@ IDD_LISTCONTROL_DEMO AFX_DIALOG_LAYOUT
 BEGIN
     0
 END
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Icon
-//
-
-// Icon with lowest ID value placed first to ensure application icon
-// remains consistent on all systems.
-IDI_SCROLL              ICON                    "..\\..\\libPPUI\\IDI_SCROLL.ico"
 
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////

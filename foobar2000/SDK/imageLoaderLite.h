@@ -1,5 +1,7 @@
 #pragma once
 
+#include "commonObjects.h"
+
 #ifdef _WIN32
 namespace Gdiplus {
 	class Image;
@@ -15,8 +17,8 @@ namespace fb2k {
 	struct imageInfo_t {
 		uint32_t width, height, bitDepth;
 		bool haveAlpha;
-		const char * formatName;
-		const char * mime;
+		const char * formatName; // MAY BE NULL IF UNKNOWN
+		const char * mime; // MAY BE NULL IF UNKNOWN
 	};
 
 	//! \since 1.6
@@ -34,6 +36,7 @@ namespace fb2k {
 
 		//! Parses the image data just enough to hand over basic info about what's inside. \n
 		//! Much faster than load(). \n
+		//! Throws exceptions on failure. \n
 		//! Supports all formats recognized by load().
 		virtual imageInfo_t getInfo(const void * data, size_t bytes, abort_callback & aborter = fb2k::noAbort) = 0;
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "string_base.h"
+
 #if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
 
 #define PFC_HAVE_PROFILER
@@ -42,13 +44,15 @@ namespace pfc {
 #ifdef _WIN32
 
 namespace pfc {
-	// ALWAYS define 64bit tickcount - don't cause mayhem if different modules are compiled for different Windows versions
 	typedef uint64_t tickcount_t;
 	inline tickcount_t getTickCount() { return GetTickCount64(); }
 
 class hires_timer {
 public:
     hires_timer() : m_start() {}
+	static hires_timer create_and_start() {
+		hires_timer t; t.start(); return t;
+	}
 	void start() {
 		m_start = g_query();
 	}
@@ -84,6 +88,9 @@ private:
 class lores_timer {
 public:
 	lores_timer() {}
+	static lores_timer create_and_start() {
+		lores_timer t; t.start(); return t;
+	}
 	void start() {
 		_start(getTickCount());
 	}
@@ -121,6 +128,10 @@ public:
     double query() const;
     double query_reset();
 	pfc::string8 queryString(unsigned precision = 3) const;
+
+	static hires_timer create_and_start() {
+		hires_timer t; t.start(); return t;
+	}
 private:
     double m_start;
 };

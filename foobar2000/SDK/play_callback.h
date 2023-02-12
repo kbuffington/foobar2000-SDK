@@ -1,3 +1,6 @@
+#pragma once
+#include "callback_merit.h"
+
 /*!
 Class receiving notifications about playback events. Note that all methods are called only from app's main thread.
 Use play_callback_manager to register your dynamically created instances. Statically registered version is available too - see play_callback_static.
@@ -64,10 +67,17 @@ public:
 	virtual void unregister_callback(play_callback * p_callback) = 0;
 };
 
+//! \since 2.0
+class NOVTABLE play_callback_manager_v2 : public play_callback_manager {
+	FB2K_MAKE_SERVICE_COREAPI_EXTENSION(play_callback_manager_v2, play_callback_manager);
+public:
+	virtual void set_callback_merit(play_callback*, fb2k::callback_merit_t) = 0;
+};
+
 //! Implementation helper.
 class play_callback_impl_base : public play_callback {
 public:
-	play_callback_impl_base(unsigned p_flags = UINT_MAX) {
+	play_callback_impl_base(unsigned p_flags = 0xFFFFFFFF) {
 		play_callback_manager::get()->register_callback(this,p_flags,false);
 	}
 	~play_callback_impl_base() {

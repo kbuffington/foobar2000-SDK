@@ -1,13 +1,18 @@
+#pragma once
+#include "audio_chunk.h"
+#include <functional>
+
 //! Structure containing ReplayGain scan results from some playable object, also providing various helper methods to manipulate those results.
 struct replaygain_info
 {
-	float m_album_gain,m_track_gain;
-	float m_album_peak,m_track_peak;
+	static constexpr float peak_invalid = -1, gain_invalid = -1000;
+
+	float m_album_gain = gain_invalid, m_track_gain = gain_invalid;
+	float m_album_peak = peak_invalid, m_track_peak = peak_invalid;
 
 	enum {text_buffer_size = 16 };
 	typedef char t_text_buffer[text_buffer_size];
 
-	static const float peak_invalid, gain_invalid;
 
 	static bool g_format_gain(float p_value,char p_buffer[text_buffer_size]);
 	static bool g_format_peak(float p_value,char p_buffer[text_buffer_size]);
@@ -82,12 +87,14 @@ public:
 	//! Retrieves audio duration, in seconds. \n
 	//! Note that the reported duration should not be assumed to be the exact length of the track -\n
 	//! with many popular audio formats, exact duration is impossible to determine without performing a full decode pass;\n
-	//! with other formats, the decoded data may be shorter than reported due to truncation other damage.
+	//! with other formats, the decoded data may be shorter than reported due to truncation other damage. \n
+	//! Length of 0 indicates unknown or infinite (no seekbar shown).
 	virtual double		get_length() const = 0;
 	//! Sets audio duration, in seconds. \n
 	//! Note that the reported duration should not be assumed to be the exact length of the track -\n
 	//! with many popular audio formats, exact duration is impossible to determine without performing a full decode pass;\n
-	//! with other formats, the decoded data may be shorter than reported due to truncation other damage.
+	//! with other formats, the decoded data may be shorter than reported due to truncation other damage. \n
+	//! Length of 0 indicates unknown or infinite (no seekbar shown).
 	virtual void		set_length(double p_length) = 0;
 
 	//! Sets ReplayGain information.
@@ -151,6 +158,8 @@ public:
 	bool			meta_format(const char * p_name,pfc::string_base & p_out, const char * separator = ", ") const;
 	void			meta_format_entry(t_size index, pfc::string_base & p_out, const char * separator = ", ") const;//same as meta_format but takes index instead of meta name.
 	
+	typedef std::function<void(const char*, const char*)> meta_enumerate_t;
+	void			meta_enumerate(meta_enumerate_t) const;
 	
 	bool			info_exists_ex(const char * p_name,t_size p_name_length) const;
 	void			info_remove_index(t_size p_index);
@@ -158,15 +167,15 @@ public:
 	bool			info_remove_ex(const char * p_name,t_size p_name_length);
 	const char *	info_get_ex(const char * p_name,t_size p_name_length) const;
 
-	inline t_size		meta_find(const char * p_name) const	{return meta_find_ex(p_name,SIZE_MAX);}
-	inline bool			meta_exists(const char * p_name) const		{return meta_exists_ex(p_name,SIZE_MAX);}
-	inline void			meta_remove_field(const char * p_name)		{meta_remove_field_ex(p_name,SIZE_MAX);}
-	inline t_size		meta_set(const char * p_name,const char * p_value)		{return meta_set_ex(p_name,SIZE_MAX,p_value,SIZE_MAX);}
+	inline t_size		meta_find(const char* p_name) const { PFC_ASSERT(p_name != nullptr); return meta_find_ex(p_name, SIZE_MAX); }
+	inline bool			meta_exists(const char* p_name) const { PFC_ASSERT(p_name != nullptr); return meta_exists_ex(p_name, SIZE_MAX); }
+	inline void			meta_remove_field(const char* p_name) { PFC_ASSERT(p_name != nullptr); meta_remove_field_ex(p_name, SIZE_MAX); }
+	inline t_size		meta_set(const char* p_name, const char* p_value) { PFC_ASSERT(p_name != nullptr && p_value != nullptr); return meta_set_ex(p_name, SIZE_MAX, p_value, SIZE_MAX); }
 	inline void			meta_insert_value(t_size p_index,t_size p_value_index,const char * p_value) {meta_insert_value_ex(p_index,p_value_index,p_value,SIZE_MAX);}
 	inline void			meta_add_value(t_size p_index,const char * p_value)	{meta_add_value_ex(p_index,p_value,SIZE_MAX);}
-	inline const char*	meta_get(const char * p_name,t_size p_index) const	{return meta_get_ex(p_name,SIZE_MAX,p_index);}
-	inline t_size		meta_get_count_by_name(const char * p_name) const		{return meta_get_count_by_name_ex(p_name,SIZE_MAX);}
-	inline t_size		meta_add(const char * p_name,const char * p_value)		{return meta_add_ex(p_name,SIZE_MAX,p_value,SIZE_MAX);}
+	inline const char* meta_get(const char* p_name, t_size p_index) const { PFC_ASSERT(p_name != nullptr); return meta_get_ex(p_name, SIZE_MAX, p_index); }
+	inline t_size		meta_get_count_by_name(const char* p_name) const { PFC_ASSERT(p_name != nullptr); return meta_get_count_by_name_ex(p_name, SIZE_MAX); }
+	inline t_size		meta_add(const char* p_name, const char* p_value) { PFC_ASSERT(p_name != nullptr && p_value != nullptr); return meta_add_ex(p_name, SIZE_MAX, p_value, SIZE_MAX); }
 	inline void			meta_modify_value(t_size p_index,t_size p_value_index,const char * p_value) {meta_modify_value_ex(p_index,p_value_index,p_value,SIZE_MAX);}
 
 	
@@ -210,18 +219,31 @@ public:
 	inline t_int64 info_get_bitrate_vbr() const {return info_get_int("bitrate_dynamic");}
 	inline void info_set_bitrate_vbr(t_int64 val) {info_set_int("bitrate_dynamic",val);}
 	inline t_int64 info_get_bitrate() const {return info_get_int("bitrate");}
-	inline void info_set_bitrate(t_int64 val) {info_set_int("bitrate",val);}
+	inline void info_set_bitrate(t_int64 val) { PFC_ASSERT(val > 0); info_set_int("bitrate", val); }
 
+	
+	//! Set number of channels
+	void info_set_channels(uint32_t);
+	//! Set number of channels and channel mask. Channel mask info will only be set if it's not plain mono or stereo.
+	void info_set_channels_ex(uint32_t channels, uint32_t mask);
+
+	//! Tidy channel mask info. If channel mask is invalid or plain mono/stereo, it will be dropped.
+	void info_tidy_channels();
+
+	//! Set just channel mask info. Typically coupled with info_set_channels(). See also: info_set_channels_ex().
 	void info_set_wfx_chanMask(uint32_t val);
+	//! Returns channel mask value. 0 if not set, use default for the channel count then.
 	uint32_t info_get_wfx_chanMask() const;
 
 	bool is_encoding_lossy() const;
 	bool is_encoding_overkill() const;
+	bool is_encoding_float() const;
 
+	//! Sets bitrate value using file size in bytes and duration.
+	void info_calculate_bitrate(uint64_t p_filesize,double p_length);
 
-	void info_calculate_bitrate(t_filesize p_filesize,double p_length);
-
-	unsigned info_get_decoded_bps() const;//what bps the stream originally was (before converting to audio_sample), 0 if unknown
+	//! Returns decoder-output bit depth - what sample format is being converted to foobar2000 audio_sample. 0 if unknown.
+	unsigned info_get_decoded_bps() const;
 
 private:
 	void merge(const pfc::list_base_const_t<const file_info*> & p_sources);
@@ -239,6 +261,7 @@ public:
 	static bool g_is_meta_equal(const file_info & p_item1,const file_info & p_item2);
 	static bool g_is_meta_equal_debug(const file_info & p_item1,const file_info & p_item2);
 	static bool g_is_info_equal(const file_info & p_item1,const file_info & p_item2);
+	static bool g_is_meta_subset_debug(const file_info& superset, const file_info& subset);
 
 	//! Unsafe - does not check whether the field already exists and will result in duplicates if it does - call only when appropriate checks have been applied externally.
 	t_size	__meta_add_unsafe_ex(const char * p_name,t_size p_name_length,const char * p_value,t_size p_value_length) {return meta_set_nocheck_ex(p_name,p_name_length,p_value,p_value_length);}
@@ -257,6 +280,7 @@ public:
 	typedef pfc::string::comparatorCaseInsensitiveASCII field_name_comparator;
 
 	static bool field_name_equals(const char * n1, const char * n2) {return field_name_comparator::compare(n1, n2) == 0;}
+	static bool field_value_equals(const file_info& i1, size_t meta1, const file_info& i2, size_t meta2);
 
 	void to_console() const;
 	void to_formatter(pfc::string_formatter&) const;
@@ -270,6 +294,12 @@ public:
 	//! Returns ESTIMATED audio chunk spec from what has been put in the file_info. \n
 	//! Provided for convenience. Do not rely on it for processing decoded data.
 	audio_chunk::spec_t audio_chunk_spec() const; 
+
+	void set_audio_chunk_spec(audio_chunk::spec_t);
+
+	//! Normalize values to Unicode form C
+	//! @returns true if changed, false otherwise
+	bool unicode_normalize_C();
 protected:
 	file_info() {}
 	~file_info() {}

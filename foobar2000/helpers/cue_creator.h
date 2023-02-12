@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cuesheet_index_list.h"
+#include <SDK/file_info_impl.h>
 
 namespace cue_creator
 {
@@ -21,4 +22,5 @@ namespace cue_creator
 	typedef pfc::chain_list_v2_t<t_entry> t_entry_list;
 
 	void create(pfc::string_formatter & p_out,const t_entry_list & p_list);
+	pfc::string_formatter create(const t_entry_list& p_list);
 };

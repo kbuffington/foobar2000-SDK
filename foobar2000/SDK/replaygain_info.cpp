@@ -1,6 +1,7 @@
-#include "foobar2000.h"
+#include "foobar2000-sdk-pch.h"
 
 #ifdef _MSC_VER
+#include <pfc/fpu.h>
 #define RG_FPU() fpu_control_roundnearest bah;
 #else
 #define RG_FPU()
@@ -17,7 +18,11 @@ bool replaygain_info::g_format_gain(float p_value,char p_buffer[text_buffer_size
 	else
 	{
 		pfc::float_to_string(p_buffer,text_buffer_size - 4,p_value,2,true);
-		strcat(p_buffer," dB");
+#ifdef _MSC_VER
+		strcat_s(p_buffer, text_buffer_size, " dB");
+#else
+		strcat(p_buffer, " dB");
+#endif
 		return true;
 	}
 }
@@ -46,10 +51,7 @@ bool replaygain_info::g_format_peak(float p_value,char p_buffer[text_buffer_size
 
 void replaygain_info::reset()
 {
-	m_album_gain = gain_invalid;
-	m_track_gain = gain_invalid;
-	m_album_peak = peak_invalid;
-	m_track_peak = peak_invalid;
+	*this = replaygain_info();
 }
 
 #define meta_album_gain "replaygain_album_gain"

@@ -1,13 +1,10 @@
-#include "foobar2000.h"
+#include "foobar2000-sdk-pch.h"
+#include "popup_message.h"
+#include "messageBox.h"
 
-void popup_message::g_show_ex(const char * p_msg,unsigned p_msg_length,const char * p_title,unsigned p_title_length,t_icon p_icon)
+void popup_message::g_show_ex(const char * p_msg,size_t p_msg_length,const char * p_title,size_t p_title_length,t_icon p_icon)
 {
-    // Do not force instantiate, not all platforms have this
-    service_enum_t< popup_message > e;
-    service_ptr_t< popup_message > m;
-    if (e.first( m ) ) {
-        m->show_ex( p_msg, p_msg_length, p_title, p_title_length, p_icon );
-    }
+    get()->show_ex(p_msg, p_msg_length, p_title, p_title_length, p_icon);
 }
 
 
@@ -19,20 +16,21 @@ void popup_message::g_complain(const char * p_whatFailed, const std::exception &
     g_complain(p_whatFailed,p_exception.what());
 }
 void popup_message::g_complain(const char * p_whatFailed, const char * msg) {
-    g_complain( PFC_string_formatter() << p_whatFailed << ": " << msg );
+    g_complain( pfc::format(p_whatFailed, ": ", msg));
 }
 
-#if FOOBAR2000_TARGET_VERSION >= 80
 void popup_message_v3::show_query( const char * title, const char * msg, unsigned buttons, completion_notify::ptr reply) {
     query_t q;
     q.title = title; q.msg = msg; q.buttons = buttons; q.reply = reply;
     this->show_query( q );
 }
-#endif
+
+void popup_message_v3::query_t::show() {
+	popup_message_v3::get()->show_query(*this);
+}
 
 
-#ifdef FOOBAR2000_DESKTOP_WINDOWS
-void popup_message_v2::g_show(HWND parent, const char * msg, const char * title) {
+void popup_message_v2::g_show(fb2k::hwnd_t parent, const char * msg, const char * title) {
     service_enum_t< popup_message_v2 > e;
     service_ptr_t< popup_message_v2 > m;
     if (e.first( m )) {
@@ -41,15 +39,13 @@ void popup_message_v2::g_show(HWND parent, const char * msg, const char * title)
         popup_message::g_show( msg, title );
     }
 }
-void popup_message_v2::g_complain(HWND parent, const char * whatFailed, const char * msg) {
-    g_show(parent, PFC_string_formatter() << whatFailed << ": " << msg);
+void popup_message_v2::g_complain(fb2k::hwnd_t parent, const char * whatFailed, const char * msg) {
+    g_show(parent, pfc::format(whatFailed, ": ", msg));
 }
-void popup_message_v2::g_complain(HWND parent, const char * whatFailed, const std::exception & e) {
+void popup_message_v2::g_complain(fb2k::hwnd_t parent, const char * whatFailed, const std::exception & e) {
     g_complain(parent, whatFailed, e.what());
 }
-#endif // FOOBAR2000_DESKTOP_WINDOWS
 
-#ifdef FOOBAR2000_MODERN
 void fb2k::showToast( const char * msg ) {
     fb2k::popup_toast::arg_t arg;
     fb2k::popup_toast::get()->show_toast(msg, arg);
@@ -67,10 +63,13 @@ void popup_message::g_showToastLongDuration(const char * msg) {
     fb2k::showToastLongDuration( msg );
 }
 
-#endif // FOOBAR2000_MODERN
-
-#if defined(FOOBAR2000_DESKTOP_WINDOWS) && FOOBAR2000_TARGET_VERSION >= 80
-int popup_message_v3::messageBox(HWND parent, const char* msg, const char* title, UINT flags) {
+int fb2k::messageBox(fb2k::hwnd_t parent, const char* msg, const char* title, unsigned flags) {
+	return popup_message_v3::get()->messageBox(parent, msg, title, flags);
+}
+void fb2k::messageBoxAsync(fb2k::hwnd_t parent, const char* msg, const char* title, unsigned flags, std::function<void(int)> reply) {
+	return popup_message_v3::get()->messageBoxAsync(parent, msg, title, flags, reply);
+}
+popup_message_v3::query_t popup_message_v3::setupMessageBox(fb2k::hwnd_t parent, const char* msg, const char* title, unsigned flags) {
 	query_t q = {};
 	q.title = title;
 	q.msg = msg;
@@ -109,21 +108,22 @@ int popup_message_v3::messageBox(HWND parent, const char* msg, const char* title
 	}
 	switch (flags & 0xF0) {
 	case MB_ICONHAND:
-		q.icon = iconWarning;
+		q.icon = iconError;
 		break;
 	case MB_ICONQUESTION:
 		q.icon = iconQuestion;
 		break;
 	case MB_ICONEXCLAMATION:
-		q.icon = iconError;
+		q.icon = iconWarning;
 		break;
 	case MB_ICONASTERISK:
 		q.icon = iconInformation;
 		break;
 	}
 
-	uint32_t status = this->show_query_modal(q);
-	
+	return q;
+}
+int popup_message_v3::messageBoxReply(uint32_t status) {
 	if (status & buttonOK) return IDOK;
 	if (status & buttonCancel) return IDCANCEL;
 	if (status & buttonYes) return IDYES;
@@ -134,4 +134,17 @@ int popup_message_v3::messageBox(HWND parent, const char* msg, const char* title
 
 	return -1;
 }
-#endif
+void popup_message_v3::messageBoxAsync(fb2k::hwnd_t parent, const char* msg, const char* title, unsigned flags, std::function<void (int)> reply) {
+	auto q = setupMessageBox(parent, msg, title, flags);
+	if (reply) {
+		q.reply = fb2k::makeCompletionNotify([reply](unsigned code) {
+			reply(messageBoxReply(code));
+			});
+	}
+	this->show_query(q);
+}
+int popup_message_v3::messageBox(fb2k::hwnd_t parent, const char* msg, const char* title, unsigned flags) {
+	auto q = setupMessageBox(parent, msg, title, flags);
+	uint32_t status = this->show_query_modal(q);
+	return messageBoxReply(status);
+}

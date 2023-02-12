@@ -1,4 +1,6 @@
-#include "pfc.h"
+#include "pfc-lite.h"
+#include "base64.h"
+#include "string_base.h"
 
 namespace bitWriter {
 	static void set_bit(t_uint8 * p_stream,size_t p_offset, bool state) {
@@ -15,9 +17,9 @@ namespace bitWriter {
 };
 
 namespace pfc {
-	static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-	static const uint8_t alphabetRev[256] = 
+	static constexpr uint8_t alphabetRev[256] = 
 		{0x40,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
 		,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
 		,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x3E,0xFF,0xFF,0xFF,0x3F
@@ -50,7 +52,11 @@ namespace pfc {
 		return textLen * 3 / 4;
 	}
 
-	
+	mem_block base64_decode(const char* text) {
+		mem_block ret; ret.resize(base64_decode_estimate(text));
+		base64_decode(text, ret.ptr());
+		return ret;
+	}
 
 	void base64_decode(const char * text, void * out) {
 		

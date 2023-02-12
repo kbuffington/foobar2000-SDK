@@ -1,4 +1,5 @@
-#include "pfc.h"
+﻿#include "pfc-lite.h"
+#include "pathUtils.h"
 
 static_assert(L'Ö' == 0xD6, "Compile as Unicode!!!");
 
@@ -43,7 +44,7 @@ string getParent(string filePath) {
 string combine(string basePath,string fileName) {
 	if (basePath.length() > 0) {
 		if (!isSeparator(basePath.lastChar())) {
-			basePath += getDefaultSeparator();
+			basePath.add_byte( getDefaultSeparator() );
 		}
 		return basePath + fileName;
 	} else {
@@ -85,7 +86,7 @@ const char * charReplaceModern(char c) {
 	case ':':
 		return u8"∶";
 	case '/':
-		return u8"⁄";
+		return u8"\u2215";
 	case '\\':
 		return u8"⧵";
 	case '?':
@@ -273,17 +274,15 @@ string validateFileName(string name, bool allowWC, bool preserveExt, charReplace
 	// replaceIllegalNameChars may remove chars exposing illegal prefix/suffix chars
 	name = replaceIllegalNameChars(name, allowWC, replaceIllegalChar);
 	if (name.length() > 0 && !allowWC) {
-		pfc::string8 lstIllegal = " ";
-		if (!preserveExt) lstIllegal += ".";
-
+		const char* lstIllegal = preserveExt ? "" : " .";
 		name = trailingSanity(name, preserveExt, lstIllegal);
 	}
 
 #ifdef _WINDOWS
 	name = truncatePathComponent(name, preserveExt);
 	
-	for( unsigned w = 0; w < _countof(specialIllegalNames); ++w ) {
-		if (pfc::stringEqualsI_ascii( name.c_str(), specialIllegalNames[w] ) ) {
+	for( auto p : specialIllegalNames ) {
+		if (pfc::stringEqualsI_ascii( name.c_str(), p ) ) {
 			name += "-";
 			break;
 		}

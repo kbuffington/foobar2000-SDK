@@ -1,7 +1,7 @@
 #pragma once
 
 #include <climits> // UINT_MAX
-
+#include <functional>
 #include "completion_notify.h"
 
 //! This interface allows you to show generic nonmodal noninteractive dialog with a text message. This should be used instead of MessageBox where possible.\n
@@ -17,7 +17,7 @@ public:
 	//! @param p_title Title of dialog to show (UTF-8 encoded string).
 	//! @param p_title_length Length limit of the title string, in bytes (actual string may be shorter if null terminator is encountered before). Set this to infinite to use plain null-terminated strings.
 	//! @param p_icon Icon of the dialog - can be set to icon_information, icon_error or icon_query.
-	virtual void show_ex(const char * p_msg,unsigned p_msg_length,const char * p_title,unsigned p_title_length,t_icon p_icon = icon_information) = 0;
+	virtual void show_ex(const char * p_msg,size_t p_msg_length,const char * p_title,size_t p_title_length,t_icon p_icon = icon_information) = 0;
 
 	//! Activates the popup dialog; returns immediately (the dialog remains visible); helper function built around show_ex(), takes null terminated strings with no length limit parameters.
 	//! @param p_msg Message to show (UTF-8 encoded string).
@@ -26,7 +26,7 @@ public:
 	inline void show(const char * p_msg,const char * p_title,t_icon p_icon = icon_information) {show_ex(p_msg,UINT_MAX,p_title,UINT_MAX,p_icon);}
 
 	//! Static helper function instantiating the service and activating the message dialog. See show_ex() for description of parameters.
-	static void g_show_ex(const char * p_msg,unsigned p_msg_length,const char * p_title,unsigned p_title_length,t_icon p_icon = icon_information);
+	static void g_show_ex(const char * p_msg,size_t p_msg_length,const char * p_title,size_t p_title_length,t_icon p_icon = icon_information);
 	//! Static helper function instantiating the service and activating the message dialog. See show() for description of parameters.
 	static inline void g_show(const char * p_msg,const char * p_title,t_icon p_icon = icon_information) {g_show_ex(p_msg,UINT_MAX,p_title,UINT_MAX,p_icon);}
 
@@ -37,31 +37,26 @@ public:
 	//! <whatfailed>: <msg>
 	static void g_complain(const char * p_whatFailed, const char * msg);
 
-#ifdef FOOBAR2000_MODERN
     static void g_showToast(const char * msg);
     static void g_showToastLongDuration(const char * msg);
-#endif
 
     FB2K_MAKE_SERVICE_COREAPI(popup_message);
 };
 
 #define EXCEPTION_TO_POPUP_MESSAGE(CODE,LABEL) try { CODE; } catch(std::exception const & e) {popup_message::g_complain(LABEL,e);}
 
-#ifdef FOOBAR2000_DESKTOP_WINDOWS
 //! \since 1.1
 class NOVTABLE popup_message_v2 : public service_base {
 	FB2K_MAKE_SERVICE_COREAPI(popup_message_v2);
 public:
-	virtual void show(HWND parent, const char * msg, t_size msg_length, const char * title, t_size title_length) = 0;
-	void show(HWND parent, const char * msg, const char * title) {show(parent, msg, ~0, title, ~0);}
+	virtual void show(fb2k::hwnd_t parent, const char * msg, t_size msg_length, const char * title, t_size title_length) = 0;
+	void show(fb2k::hwnd_t parent, const char * msg, const char * title) {show(parent, msg, SIZE_MAX, title, SIZE_MAX);}
 
-	static void g_show(HWND parent, const char * msg, const char * title = "Information");
-	static void g_complain(HWND parent, const char * whatFailed, const char * msg);
-	static void g_complain(HWND parent, const char * whatFailed, const std::exception & e);
+	static void g_show(fb2k::hwnd_t parent, const char * msg, const char * title = "Information");
+	static void g_complain(fb2k::hwnd_t parent, const char * whatFailed, const char * msg);
+	static void g_complain(fb2k::hwnd_t parent, const char * whatFailed, const std::exception & e);
 };
-#endif
 
-#ifdef FOOBAR2000_MODERN
 namespace fb2k {
 	class popup_toast : public service_base {
 		FB2K_MAKE_SERVICE_COREAPI( popup_toast );
@@ -83,9 +78,8 @@ namespace fb2k {
 }
 
 #define FB2K_Toast() ::fb2k::toastFormatter()._formatter()
-#endif
 
-#if FOOBAR2000_TARGET_VERSION >= 80
+
 //! \since 1.5
 class NOVTABLE popup_message_v3 : public service_base {
     FB2K_MAKE_SERVICE_COREAPI(popup_message_v3);
@@ -117,11 +111,11 @@ public:
         uint32_t buttons = 0;
         uint32_t defButton = 0;
         uint32_t icon = iconNone;
-        completion_notify::ptr reply;
-#ifdef _WIN32
-        HWND wndParent = NULL;
-#endif
+        completion_notify::ptr reply; // optional
+        fb2k::hwnd_t wndParent = NULL;
         const char * msgDoNotAskAgain = nullptr;
+
+		void show();
     };
 
     //! Shows an interactive query presenting the user with multiple actions to choose from.
@@ -130,12 +124,12 @@ public:
     //! Modal version of show_query. Reply part of the argument can be empty; the status code will be returned.
     virtual uint32_t show_query_modal(query_t const &) = 0;
 
-#ifdef FOOBAR2000_DESKTOP_WINDOWS
 	// Minimalist MessageBox() reimplementation wrapper
-	int messageBox(HWND, const char*, const char*, UINT);
-#endif
+	int messageBox(fb2k::hwnd_t, const char*, const char*, unsigned);
+	void messageBoxAsync(fb2k::hwnd_t, const char*, const char*, unsigned, std::function<void (int)> reply = nullptr);
+	static query_t setupMessageBox(fb2k::hwnd_t parent, const char* msg, const char* title, unsigned flags);
+	static int messageBoxReply(uint32_t);
     
     //! Old method wrapper
     void show_query( const char * title, const char * msg, unsigned buttons, completion_notify::ptr reply);
 };
-#endif // FOOBAR2000_TARGET_VERSION >= 80

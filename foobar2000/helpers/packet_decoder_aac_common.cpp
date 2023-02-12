@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "StdAfx.h"
 
 #include "packet_decoder_aac_common.h"
 
@@ -244,4 +244,69 @@ unsigned packet_decoder_aac_common::get_ASC_object_type(const void * p_, size_t 
 		objectType = 32 + (unsigned) r.read(6);
 	}
 	return objectType;
+}
+
+const char * packet_decoder_aac_common::objectTypeStr( unsigned ot ) {
+    switch(ot) {
+        case 1: return "Main";
+        case 2: return "LC";
+        case 3: return "SSR";
+        case 4: return "LTP";
+        case 5: return "SBR";
+        case 23: return "LD";
+        case 39: return "ELD";
+        case 42:
+        case 45:
+            return "USAC";
+        default:
+            return nullptr; // unknown
+    }
+
+}
+
+const char * packet_decoder_aac_common::audioSpecificConfig_t::objectTypeStr() const {
+    return packet_decoder_aac_common::objectTypeStr( this->m_objectType );
+}
+
+pfc::array_t<uint8_t> packet_decoder_aac_common::buildASC(audioSpecificConfig_t const& arg) {
+    pfc::array_t<uint8_t> ret; ret.resize(5); memset(ret.get_ptr(), 0, ret.get_size());
+    unsigned pos = 0;
+    auto write = [&](unsigned v, unsigned bits) {
+        bitreader_helper::write_int(ret.get_ptr(), pos, bits, v);
+        pos += bits;
+    };
+
+    if (arg.m_objectType < 32) {
+        write(arg.m_objectType, 5);
+    } else {
+        write(31, 5);
+        write(arg.m_objectType - 32, 6);
+    }
+
+    {
+        bool stdRate = false;
+        for (unsigned i = 0; i < std::size(aac_sample_rates); ++i) {
+            if (arg.m_sampleRate == aac_sample_rates[i]) {
+                write(i, 4);
+                stdRate = true; break;
+            }
+        }
+        if (!stdRate) {
+            write(arg.m_sampleRate, 24);
+        }
+
+        write(arg.m_channels, 4);
+    }
+
+    ret.set_size((pos + 7) / 8);
+    return ret;
+}
+
+pfc::array_t<uint8_t> packet_decoder_aac_common::buildSafeASC(unsigned rate) {
+    if (rate == 0) rate = 44100;
+    audioSpecificConfig_t info = {};
+    info.m_sampleRate = rate;
+    info.m_objectType = 1; // 1 = main, 2 = LC
+    info.m_channels = 2; // stereo
+    return buildASC(info);
 }

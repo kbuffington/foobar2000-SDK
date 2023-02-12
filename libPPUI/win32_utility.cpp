@@ -1,7 +1,11 @@
 #include "stdafx.h"
 #include "win32_utility.h"
 #include "win32_op.h"
+#include <list>
 
+SIZE QueryContextDPI(HDC dc) {
+	return {GetDeviceCaps(dc,LOGPIXELSX), GetDeviceCaps(dc,LOGPIXELSY)};
+}
 unsigned QueryScreenDPI(HWND wnd) {
 	HDC dc = GetDC(wnd);
 	unsigned ret = GetDeviceCaps(dc, LOGPIXELSY);
@@ -34,7 +38,7 @@ void HeaderControl_SetSortIndicator(HWND header_, int column, bool isUp) {
 	for (int walk = 0; walk < total; ++walk) {
 		HDITEM item = {}; item.mask = HDI_FORMAT;
 		if (header.GetItem(walk, &item)) {
-			DWORD newFormat = item.fmt;
+			auto newFormat = item.fmt;
 			newFormat &= ~(HDF_SORTUP | HDF_SORTDOWN);
 			if (walk == column) {
 				newFormat |= isUp ? HDF_SORTUP : HDF_SORTDOWN;
@@ -103,6 +107,14 @@ UINT GetTextHeight(HDC dc)
 
 
 LRESULT RelayEraseBkgnd(HWND p_from, HWND p_to, HDC p_dc) {
+
+	CDCHandle dc(p_dc);
+	DCStateScope scope(dc);
+	CRect client;
+	if (GetClientRect(p_from, client)) {
+		dc.IntersectClipRect(client);
+	}
+	
 	LRESULT status;
 	POINT pt = { 0, 0 }, pt_old = { 0,0 };
 	MapWindowPoints(p_from, p_to, &pt, 1);
@@ -110,6 +122,56 @@ LRESULT RelayEraseBkgnd(HWND p_from, HWND p_to, HDC p_dc) {
 	status = SendMessage(p_to, WM_ERASEBKGND, (WPARAM)p_dc, 0);
 	SetWindowOrgEx(p_dc, pt_old.x, pt_old.y, 0);
 	return status;
+}
+
+static LRESULT CALLBACK EraseHandlerProc(
+	HWND hWnd,
+	UINT uMsg,
+	WPARAM wParam,
+	LPARAM lParam,
+	UINT_PTR uIdSubclass,
+	DWORD_PTR dwRefData
+) {
+	if (uMsg == WM_ERASEBKGND) {
+		HWND wndTarget = reinterpret_cast<HWND>(dwRefData);
+		PFC_ASSERT(wndTarget != NULL);
+		return RelayEraseBkgnd(hWnd, wndTarget, (HDC)wParam);
+	}
+	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+}
+
+static LRESULT CALLBACK CtlColorProc(
+	HWND hWnd,
+	UINT uMsg,
+	WPARAM wParam,
+	LPARAM lParam,
+	UINT_PTR uIdSubclass,
+	DWORD_PTR dwRefData
+) {
+	switch (uMsg) {
+	case WM_CTLCOLORMSGBOX:
+	case WM_CTLCOLOREDIT:
+	case WM_CTLCOLORLISTBOX:
+	case WM_CTLCOLORBTN:
+	case WM_CTLCOLORDLG:
+	case WM_CTLCOLORSCROLLBAR:
+	case WM_CTLCOLORSTATIC:
+		return SendMessage(GetParent(hWnd), uMsg, wParam, lParam);
+	default:
+		return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+	}
+}
+
+
+void InjectEraseHandler(HWND wnd, HWND sendTo) {
+	PFC_ASSERT(sendTo != NULL);
+	WIN32_OP_D(SetWindowSubclass(wnd, EraseHandlerProc, 0, reinterpret_cast<DWORD_PTR>(sendTo)));
+}
+void InjectParentEraseHandler(HWND wnd) {
+	InjectEraseHandler(wnd, GetParent(wnd));
+}
+void InjectParentCtlColorHandler(HWND wnd) {
+	WIN32_OP_D(SetWindowSubclass(wnd, CtlColorProc, 0, 0));
 }
 
 pfc::string8 EscapeTooltipText(const char * src)
@@ -148,11 +210,6 @@ void SetDefaultMenuItem(HMENU p_menu, unsigned p_id) {
 	SetMenuItemInfo(p_menu, p_id, FALSE, &info);
 }
 
-static bool running_under_wine(void) {
-	HMODULE module = GetModuleHandle(_T("ntdll.dll"));
-	if (!module) return false;
-	return GetProcAddress(module, "wine_server_call") != NULL;
-}
 static bool FetchWineInfoAppend(pfc::string_base & out) {
 	typedef const char *(__cdecl *t_wine_get_build_id)(void);
 	typedef void(__cdecl *t_wine_get_host_version)(const char **sysname, const char **release);
@@ -194,6 +251,8 @@ static void GetOSVersionStringAppend(pfc::string_base & out) {
 		out << " IA64"; break;
 	case PROCESSOR_ARCHITECTURE_INTEL:
 		out << " x86"; break;
+	case PROCESSOR_ARCHITECTURE_ARM64:
+		out << " ARM64"; break;
 	}
 }
 
@@ -210,9 +269,82 @@ WORD GetOSVersionCode() {
 	return (WORD)ret;
 }
 
+bool IsWine() {
+	static bool ret = [] {	
+		HMODULE module = GetModuleHandle(_T("ntdll.dll"));
+		if (!module) return false;
+		return GetProcAddress(module, "wine_server_call") != NULL;
+	} ();
+	return ret;
+}
 
-POINT GetCursorPos() {
-	POINT pt;
-	WIN32_OP_D( GetCursorPos(&pt) );
-	return pt;
+static BOOL CALLBACK EnumChildWindowsProc(HWND w, LPARAM p) {
+	auto f = reinterpret_cast<std::function<void(HWND)>*>(p);
+	(*f)(w);
+	return TRUE;
+}
+void EnumChildWindows(HWND w, std::function<void(HWND)> f) {
+	::EnumChildWindows(w, EnumChildWindowsProc, reinterpret_cast<LPARAM>(&f));
+}
+void EnumChildWindowsHere(HWND parent, std::function<void(HWND)> f) {
+	for (HWND walk = GetWindow(parent, GW_CHILD); walk != NULL; walk = GetWindow(walk, GW_HWNDNEXT)) {
+		f(walk);
+	}
+}
+static DWORD Win10BuildNumber_() {
+	OSVERSIONINFO ver = { sizeof(ver) };
+	WIN32_OP_D(GetVersionEx(&ver));
+	return ver.dwMajorVersion == 10 ? ver.dwBuildNumber : 0;
+}
+DWORD Win10BuildNumber() {
+	static DWORD b = Win10BuildNumber_();
+	return b;
+}
+
+#include "hookWindowMessages.h"
+#include <algorithm>
+
+namespace {
+
+	class CWindowHook_Map : public CWindowImpl<CWindowHook_Map, CWindow> {
+	public:
+		CMessageMap* m_target = nullptr;
+		DWORD m_targetID = 0;
+
+		std::vector< DWORD > m_messages;
+
+		void setup(std::initializer_list<DWORD>&& arg) {
+			m_messages = std::move(arg);
+			std::sort(m_messages.begin(), m_messages.end());
+		}
+
+		bool isMsgWanted(DWORD msg) const {
+			return std::binary_search(m_messages.begin(), m_messages.end(), msg);
+		}
+		BEGIN_MSG_MAP(CWindowHook)
+			if (isMsgWanted(uMsg)) {
+				CHAIN_MSG_MAP_ALT_MEMBER((*m_target), m_targetID);
+			}
+		END_MSG_MAP()
+	};
+
+	class CWindowHook_Proc : public CWindowImpl<CWindowHook_Proc, CWindow> {
+	public:
+		CWindowHook_Proc(PP::messageHook_t proc) : m_proc(proc) {}
+		const PP::messageHook_t m_proc;
+
+		BEGIN_MSG_MAP(CWindowHook)
+			if (m_proc(hWnd, uMsg, wParam, lParam, lResult)) return TRUE;
+		END_MSG_MAP()
+	};
+
+}
+
+void PP::hookWindowMessages(HWND wnd, CMessageMap* target, DWORD targetID, std::initializer_list<DWORD>&& msgs) {
+	auto obj = PP::subclassThisWindow< CWindowHook_Map >(wnd);
+	obj->m_target = target; obj->m_targetID = targetID;
+	obj->setup(std::move(msgs));
+}
+void PP::hookWindowMessages(HWND wnd, messageHook_t h) {
+	PP::subclassThisWindow< CWindowHook_Proc >(wnd, h);
 }
